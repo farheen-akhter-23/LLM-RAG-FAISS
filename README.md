@@ -89,7 +89,7 @@ streamlit run app.py
 
 A video tutorial is available to guide you through the setup and usage of this project.
 
-🎥 **[Watch the Demo](https://github.com/user-attachments/assets/cbdcf53d-5bc4-4d11-9ec9-d4af28328082)** (Replace with actual link)
+🎥 https://github.com/user-attachments/assets/cbdcf53d-5bc4-4d11-9ec9-d4af28328082
 
 ---
 
