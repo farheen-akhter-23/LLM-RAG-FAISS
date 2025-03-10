@@ -25,6 +25,11 @@ The following libraries are used in this project:
 
 ---
 
+
+https://github.com/user-attachments/assets/373356bf-fb47-47ed-8979-116cc801a27f
+
+
+
 ## 🔑 How to Generate Google Gemini API Keys
 To use Google Gemini AI, follow these steps to obtain an API key:
 
