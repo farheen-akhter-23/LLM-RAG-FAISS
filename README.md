@@ -26,7 +26,6 @@ The following libraries are used in this project:
 ---
 
 
-https://github.com/user-attachments/assets/373356bf-fb47-47ed-8979-116cc801a27f
 
 
 
@@ -93,7 +92,8 @@ streamlit run app.py
 ## 📽️ Video Demonstration
 
 A video tutorial is available to guide you through the setup and usage of this project.
-🎥 Watch the Demo(https://github.com/user-attachments/assets/cbdcf53d-5bc4-4d11-9ec9-d4af28328082)
+
+https://github.com/user-attachments/assets/373356bf-fb47-47ed-8979-116cc801a27f
 
 ---
 
