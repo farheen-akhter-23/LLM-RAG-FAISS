@@ -1,72 +1,116 @@
 import streamlit as st
 from streamlit_chat import message
 import tempfile
-from langchain.document_loaders.csv_loader import CSVLoader
+import textwrap
+from huggingface_hub import hf_hub_download
+from langchain.document_loaders import CSVLoader
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.llms import CTransformers
 from langchain.chains import ConversationalRetrievalChain
 
+st.set_page_config(page_title="Chat with CSV using LLaMA2", layout="wide")
+
+# ✅ Constants
 DB_FAISS_PATH = 'vectorstore/db_faiss'
-background_image_path = 'background.jpg'
-# Set the background image and color
+BACKGROUND_IMAGE_PATH = 'background.jpg'
+MODEL_REPO = "TheBloke/Llama-2-7B-Chat-GGML"
+MODEL_FILE = "llama-2-7b-chat.ggmlv3.q8_0.bin"
 
-#Loading the model
+# ✅ Load LLaMA-2 Model
 def load_llm():
-    # Load the locally downloaded model here
-  llm = CTransformers(model='TheBloke/Llama-2-7B-Chat-GGML',model_file='llama-2-7b-chat.ggmlv3.q8_0.bin',max_new_tokens=512,temperature=0.1,gpu_layers=50)
-  return llm
+    """
+    Downloads and loads the LLaMA-2 GGML model correctly.
+    """
+    model_path = hf_hub_download(repo_id=MODEL_REPO, filename=MODEL_FILE, local_dir="./models")
 
-st.title("☔ ☔Chat with CSV using Llama2 ☔ ☔")
-st.markdown("Built by ♻️ CSVQConnect ♻️ ", unsafe_allow_html=True)
-# Your background image URL goes here
-#background_image_url = 'https://www.bing.com/images/search?view=detailV2&ccid=lFAWXtbv&id=BB57AC3541361FF3844CAA706B667014CB515B92&thid=OIP.lFAWXtbvpchf66BryfJQ1QHaE8&mediaurl=https%3a%2f%2fimage.freepik.com%2ffree-photo%2ftwo-llamas-andean-highland-bolivia_107467-2006.jpg&exph=418&expw=626&q=llama2+image&simid=608011097331751957&FORM=IRPRST&ck=F66D65F1AFAAA4BBCF9986ADF8ED1643&selectedIndex=4'
-background_image_path = 'background.jpg'
-# Set the background image and color
+    llm = CTransformers(
+        model=model_path,  # Use the downloaded model path
+        model_type="llama",  # Explicitly define model type
+        max_new_tokens=512,
+        temperature=0.1,
+        gpu_layers=50  # Set GPU layers for acceleration if available
+    )
 
+    return llm
 
-uploaded_file = st.sidebar.file_uploader("Upload your Data", type="csv")
+# ✅ Streamlit UI Setup
+st.title("☔ Chat with CSV using LLaMA2 ☔")
+st.markdown("Built by ♻️ CSVQConnect ♻️", unsafe_allow_html=True)
 
-if uploaded_file :
-   #use tempfile because CSVLoader only accepts a file_path
+# ✅ File Upload
+uploaded_file = st.sidebar.file_uploader("Upload your CSV file", type=["csv"])
+
+if uploaded_file:
+    # ✅ Process uploaded CSV file
     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
         tmp_file.write(uploaded_file.getvalue())
         tmp_file_path = tmp_file.name
 
-    loader = CSVLoader(file_path=tmp_file_path, encoding="utf-8", csv_args={
-                'delimiter': ','})
+    # ✅ Load Data & Create Vector Store
+    loader = CSVLoader(file_path=tmp_file_path, encoding="utf-8", csv_args={'delimiter': ','})
     data = loader.load()
-    #st.json(data)
-    embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
 
+    embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
     db = FAISS.from_documents(data, embeddings)
     db.save_local(DB_FAISS_PATH)
+
+    # ✅ Load LLM and Retrieval Chain
     llm = load_llm()
     chain = ConversationalRetrievalChain.from_llm(llm=llm, retriever=db.as_retriever())
 
+    # ✅ Conversational Chat Function (Fixes Token Limit Issues)
     def conversational_chat(query):
-        result = chain({"question": query, "chat_history": st.session_state['history']})
-        st.session_state['history'].append((query, result["answer"]))
-        return result["answer"]
+        """
+        Processes long queries using token chunking and sliding window approach.
+        """
+        max_chunk_size = 400  # Keep it well below model limit (512)
+        query_chunks = textwrap.wrap(query, max_chunk_size, break_long_words=False)
 
+        chat_history = st.session_state.get('history', [])
+
+        # ✅ Ensure history is within token limits (keep last 3 messages)
+        chat_history = chat_history[-3:]
+
+        # ✅ Generate concise chat history summary to reduce token load
+        if len(chat_history) > 0:
+            chat_summary = " ".join([f"User: {q} | Bot: {a}" for q, a in chat_history])
+            if len(chat_summary.split()) > 200:  # Prevent history bloat
+                chat_summary = chat_summary[-200:]  # Trim older parts
+        else:
+            chat_summary = ""
+
+        results = []
+
+        for chunk in query_chunks:
+            try:
+                result = chain.invoke({"question": chunk, "chat_history": chat_summary})
+                chat_history.append((chunk, result["answer"]))
+                results.append(result["answer"])
+            except Exception as e:
+                st.error(f"❌ Model Error: {e}")
+
+        st.session_state['history'] = chat_history  # Update session history
+        return " ".join(results)
+
+
+    # ✅ Initialize Chat History
     if 'history' not in st.session_state:
         st.session_state['history'] = []
 
     if 'generated' not in st.session_state:
-        st.session_state['generated'] = ["Hello ! What is your query about " + uploaded_file.name + " 🤗"]
+        st.session_state['generated'] = ["Hello! What is your query about " + uploaded_file.name + " 🤗"]
 
     if 'past' not in st.session_state:
-        st.session_state['past'] = ["Hey ! 👋"]
+        st.session_state['past'] = ["Hey! 👋"]
 
-    #container for the chat history
+    # ✅ UI Layout for Chat
     response_container = st.container()
-    #container for the user's text input
     container = st.container()
 
     with container:
-        with st.form(key='my_form', clear_on_submit=True):
-
-            user_input = st.text_input("Query:", placeholder="Search answer from your csv data here (:", key='input')
+        with st.form(key='chat_form', clear_on_submit=True):
+            user_input = st.text_input("Query:", placeholder="Ask a question about your CSV data...", key='input')
             submit_button = st.form_submit_button(label='Send')
 
         if submit_button and user_input:
